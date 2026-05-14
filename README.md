@@ -28,4 +28,3 @@ cmake --build build
 - cmake 3.31.6
 - ninja 1.12.1
 - clang 19.1.7
-

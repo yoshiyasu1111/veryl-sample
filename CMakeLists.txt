@@ -13,4 +13,5 @@ verilate(
   INCLUDE_DIRS ./obj_dir
   VERILATOR_ARGS
     "--public"
+    "--trace-fst"
 )
