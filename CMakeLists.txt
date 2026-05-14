@@ -13,6 +13,17 @@ project(cmake_example)
 #
 find_package(verilator REQUIRED)
 find_program(VERYL_EXECUTABLE veryl REQUIRED)
+find_program(CCACHE_PROGRAM ccache)
+
+if(CCACHE_PROGRAM)
+    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+
+    set(CMAKE_C_COMPILER_LAUNCHER
+        ${CCACHE_PROGRAM})
+
+    set(CMAKE_CXX_COMPILER_LAUNCHER
+        ${CCACHE_PROGRAM})
+endif()
 
 #
 # Verilator requires generated SV to exist
@@ -80,11 +91,15 @@ verilate(
 # compile options
 #
 target_compile_features(Vtop PRIVATE cxx_std_20)
-
 target_compile_options(
     Vtop
     PRIVATE
         -Wall
 #        -Wextra
         -O2
+)
+target_link_options(
+    Vtop
+    PRIVATE
+        -fuse-ld=mold
 )
