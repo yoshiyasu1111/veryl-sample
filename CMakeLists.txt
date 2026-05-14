@@ -1,4 +1,8 @@
-cmake_minimum_required(VERSION 4.3)
+cmake_minimum_required(VERSION 3.30)
+
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
+
 project(cmake_example)
 
 find_package(verilator HINTS $ENV{VERIOATOR_ROOT})
