@@ -5,6 +5,28 @@
 #include "Vtop.h"
 #include "Vtop___024root.h"
 
+void tick(Vtop* top, VerilatedContext* contextp, VerilatedFstC* tfp) {
+    top->i_clk = 0;
+    top->eval();
+    tfp->dump(contextp->time());
+    contextp->timeInc(1);
+
+    top->i_clk = 1;
+    top->eval();
+    tfp->dump(contextp->time());
+    contextp->timeInc(1);
+}
+
+void reset(Vtop* top, VerilatedContext* contextp, VerilatedFstC* tfp, uint32_t cycles) {
+    top->i_rst = 0;
+
+    for (uint32_t i = 0; i < cycles; ++i) {
+        tick(top, contextp, tfp);
+    }
+
+    top->i_rst = 1;
+}
+
 int main(int argc, char** argv) {
     auto contextp = std::make_unique<VerilatedContext>();
     contextp->commandArgs(argc, argv);
@@ -21,22 +43,12 @@ int main(int argc, char** argv) {
     tfp->open("wave.fst");
 
     top->i_rst = 0;
-    for (uint32_t i = 0; i < 10; ++i) {
-        top->i_clk = 0;
-        top->eval();
-        tfp->dump(contextp->time());
-        contextp->timeInc(1);
-        top->i_clk = 1;
-        top->eval();
-        tfp->dump(contextp->time());
-        contextp->timeInc(1);
-    }
-    top->i_rst = 1;
+    top->i_clk = 0;
+
+    reset(top.get(), contextp.get(), tfp.get(), 10);
+
     for (uint32_t cycle = 0; cycle < 100 && !contextp->gotFinish(); ++cycle) {
-        top->i_clk = !top->i_clk;
-        top->eval();
-        tfp->dump(contextp->time());
-        contextp->timeInc(1);
+        tick(top.get(), contextp.get(), tfp.get());
         std::cout << static_cast<int>(top->rootp->top__DOT__counter) << std::endl;
     }
     top->final();
