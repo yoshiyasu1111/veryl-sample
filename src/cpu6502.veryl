@@ -30,13 +30,18 @@ module cpu6502 (
             cpu_state = cpu_state_t::EXEC;
         }
     }
+    enum addr_src_t {
+        NORMAL,
+        ABSOLUTEX,
+        ADJUST,
+    }
     struct ctrl_t {
         load_ir  : logic,
         load_a   : logic,
         load_x   : logic,
         load_y   : logic,
         load_lo  : logic,
-        addr_sel : logic<2>,
+        addr_src : addr_src_t,
         end_inst : logic,
         len      : logic<3>,
     }
@@ -46,10 +51,10 @@ module cpu6502 (
         bus.wen   = 0;
         bus.wdata = 0;
         if cpu_state == cpu_state_t::EXEC {
-            case ctrl.addr_sel {
-                0: bus.addr = pc + tstate + 1;
-                1: bus.addr = {bus.rdata, addr_latch[7:0]} + x;
-                2: bus.addr = pc + tstate;
+            case ctrl.addr_src {
+                addr_src_t::NORMAL    : bus.addr = pc + tstate + 1;
+                addr_src_t::ABSOLUTEX : bus.addr = {bus.rdata, addr_latch[7:0]} + x;
+                addr_src_t::ADJUST    : bus.addr = pc + tstate;
             }
         } else {
             bus.addr = pc;
@@ -71,8 +76,8 @@ module cpu6502 (
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
                     4'd1: c = ctrl_t'{ load_lo: 1, ..default(0) };
-                    4'd2: c = ctrl_t'{ addr_sel: 1, ..default(0) };
-                    4'd3: c = ctrl_t'{ load_a: 1, end_inst: 1, len: 3, addr_sel: 2, ..default(0) };
+                    4'd2: c = ctrl_t'{ addr_src: addr_src_t::ABSOLUTEX, ..default(0) };
+                    4'd3: c = ctrl_t'{ load_a: 1, end_inst: 1, addr_src: addr_src_t::ADJUST, len: 3, ..default(0) };
                 }
             }
             8'hA2: {    // LDX imm
@@ -88,7 +93,7 @@ module cpu6502 (
                 }
             }
             default: {
-                c = ctrl_t'{ end_inst: 1, ..default(0) };
+                c = '0;
             }
         }
         return c;
@@ -143,8 +148,8 @@ module cpu6502 (
     }
 
     always_ff {
-        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.load_x %h, ctrl.load_y %h, ctrl.load_lo %h, ctrl.addr_sel %h, ctrl.end_inst %h",
-                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.load_x,    ctrl.load_y,    ctrl.load_lo,    ctrl.addr_sel,    ctrl.end_inst
+        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.load_x %h, ctrl.load_y %h, ctrl.load_lo %h, ctrl.addr_src %h, ctrl.end_inst %h",
+                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.load_x,    ctrl.load_y,    ctrl.load_lo,    ctrl.addr_src,    ctrl.end_inst
         );
     }
 }
