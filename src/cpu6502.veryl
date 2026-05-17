@@ -32,27 +32,41 @@ module cpu6502 (
     }
     enum addr_src_t {
         NORMAL,
+        ABSOLUTE,
         ABSOLUTEX,
         ADJUST,
     }
+    enum write_mem_src_t {
+        A,
+    }
     struct ctrl_t {
-        load_ir  : logic,
-        load_a   : logic,
-        load_x   : logic,
-        load_y   : logic,
-        load_lo  : logic,
-        addr_src : addr_src_t,
-        end_inst : logic,
-        len      : logic<3>,
+        load_ir         : logic,
+        load_a          : logic,
+        load_x          : logic,
+        load_y          : logic,
+        load_lo         : logic,
+        addr_src        : addr_src_t,
+        write_mem       : logic,
+        write_mem_src   : write_mem_src_t,
+        end_inst        : logic,
+        len             : logic<3>,
     }
     var ctrl: ctrl_t;
 
     always_comb {
-        bus.wen   = 0;
-        bus.wdata = 0;
+        if ctrl.write_mem {
+            bus.wen = 1;
+            case ctrl.write_mem_src {
+                write_mem_src_t::A: bus.wdata = a;
+            }
+        } else {
+            bus.wen   = 0;
+            bus.wdata = 0;
+        }
         if cpu_state == cpu_state_t::EXEC {
             case ctrl.addr_src {
                 addr_src_t::NORMAL    : bus.addr = pc + tstate + 1;
+                addr_src_t::ABSOLUTE  : bus.addr = {bus.rdata, addr_latch[7:0]};
                 addr_src_t::ABSOLUTEX : bus.addr = {bus.rdata, addr_latch[7:0]} + x;
                 addr_src_t::ADJUST    : bus.addr = pc + tstate;
             }
@@ -77,7 +91,7 @@ module cpu6502 (
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
                     4'd1: c = ctrl_t'{ load_lo: 1, ..default(0) };
                     4'd2: c = ctrl_t'{ addr_src: addr_src_t::ABSOLUTEX, ..default(0) };
-                    4'd3: c = ctrl_t'{ load_a: 1, end_inst: 1, addr_src: addr_src_t::ADJUST, len: 3, ..default(0) };
+                    4'd3: c = ctrl_t'{ load_a: 1, addr_src: addr_src_t::ADJUST, end_inst: 1, len: 3, ..default(0) };
                 }
             }
             8'hA2: {    // LDX imm
@@ -90,6 +104,14 @@ module cpu6502 (
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
                     4'd1: c = ctrl_t'{ load_y: 1, end_inst: 1, len: 2, ..default(0) };
+                }
+            }
+            8'h8D: {    // STA abs
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_lo: 1, ..default(0) };
+                    4'd2: c = ctrl_t'{ addr_src: addr_src_t::ABSOLUTE, write_mem: 1, write_mem_src: write_mem_src_t::A, ..default(0) };
+                    4'd3: c = ctrl_t'{ addr_src: addr_src_t::ADJUST, end_inst: 1, len: 3, ..default(0) };
                 }
             }
             default: {
@@ -148,8 +170,8 @@ module cpu6502 (
     }
 
     always_ff {
-        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.load_x %h, ctrl.load_y %h, ctrl.load_lo %h, ctrl.addr_src %h, ctrl.end_inst %h",
-                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.load_x,    ctrl.load_y,    ctrl.load_lo,    ctrl.addr_src,    ctrl.end_inst
+        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.load_x %h, ctrl.load_y %h, ctrl.load_lo %h, ctrl.addr_src %h, ctrl.write_mem %h, ctrl.write_mem_src %h, ctrl.end_inst %h",
+                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.load_x,    ctrl.load_y,    ctrl.load_lo,    ctrl.addr_src,    ctrl.write_mem,    ctrl.write_mem_src,    ctrl.end_inst
         );
     }
 }
@@ -162,7 +184,7 @@ module test_cpu6502 {
     inst bus: bus_if::<8, 11>;
 
     inst mem: memory::<8, 11> #(
-        FILE_PATH: "../hex/test_lda.hex",
+        FILE_PATH: "../hex/test_sta.hex",
     ) (
         clk: clk,
         rst: rst,
