@@ -40,6 +40,10 @@ module cpu6502 (
     enum write_mem_src_t {
         A,
     }
+    enum x_src_t {
+        BUS,
+        INC,
+    }
     struct ctrl_t {
         load_ir         : logic,
         load_a          : logic,
@@ -48,6 +52,7 @@ module cpu6502 (
         load_sp         : logic,
         load_lo         : logic,
         addr_src        : addr_src_t,
+        x_src           : x_src_t,
         write_mem       : logic,
         write_mem_src   : write_mem_src_t,
         set_int         : logic,
@@ -101,7 +106,7 @@ module cpu6502 (
             8'hA2: {    // LDX imm
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
-                    4'd1: c = ctrl_t'{ load_x: 1, end_inst: 1, len: 2, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_x: 1, x_src: x_src_t::BUS, end_inst: 1, len: 2, ..default(0) };
                 }
             }
             8'hA0: {    // LDY imm
@@ -128,6 +133,12 @@ module cpu6502 (
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
                     4'd1: c = ctrl_t'{ load_sp: 1, addr_src: addr_src_t::IMPLIED, end_inst: 1, len: 1, ..default(0) };
+                }
+            }
+            8'hE8: {    // INX
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_x: 1, x_src: x_src_t::INC, addr_src: addr_src_t::IMPLIED, end_inst: 1, len: 1, ..default(0) };
                 }
             }
             default: {
@@ -162,8 +173,16 @@ module cpu6502 (
                         update_nz(bus.rdata);
                     }
                     if ctrl.load_x {
-                        x = bus.rdata;
-                        update_nz(bus.rdata);
+                        case ctrl.x_src {
+                            x_src_t::BUS: {
+                                x = bus.rdata;
+                                update_nz(bus.rdata);
+                            }
+                            x_src_t::INC: {
+                                x = x + 1;
+                                update_nz(x + 1);
+                            }
+                        }
                     }
                     if ctrl.load_y {
                         y = bus.rdata;
@@ -206,7 +225,7 @@ module test_cpu6502 {
     inst bus: bus_if::<8, 11>;
 
     inst mem: memory::<8, 11> #(
-        FILE_PATH: "../hex/test_txs.hex",
+        FILE_PATH: "../hex/test_inx.hex",
     ) (
         clk: clk,
         rst: rst,
