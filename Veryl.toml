@@ -5,3 +5,6 @@ version = "0.1.0"
 sources = ["src"]
 target = {type = "directory", path = "target"}
 omit_project_prefix = true
+[test]
+waveform_target = {type = "directory", path = "wave"}
+waveform_format = "fst"

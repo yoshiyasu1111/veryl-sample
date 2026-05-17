@@ -3,6 +3,7 @@
 /target
 /dependencies
 *.f
+wave
 
 # Verilator
 obj_dir/
