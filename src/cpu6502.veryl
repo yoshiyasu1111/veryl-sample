@@ -15,6 +15,7 @@ module cpu6502 (
     var p  : logic<8>;
     var opcode : logic<8>;
     var tstate : logic<4>;
+    var addr_latch : logic<16>;
 
     enum cpu_state_t {
         RESET,
@@ -32,14 +33,27 @@ module cpu6502 (
     struct ctrl_t {
         load_ir  : logic,
         load_a   : logic,
+        load_x   : logic,
+        load_y   : logic,
+        load_lo  : logic,
+        addr_sel : logic<2>,
         end_inst : logic,
+        len      : logic<3>,
     }
     var ctrl: ctrl_t;
 
     always_comb {
         bus.wen   = 0;
         bus.wdata = 0;
-        bus.addr  = if cpu_state == cpu_state_t::EXEC ? pc + tstate + 1 : pc;
+        if cpu_state == cpu_state_t::EXEC {
+            case ctrl.addr_sel {
+                0: bus.addr = pc + tstate + 1;
+                1: bus.addr = {bus.rdata, addr_latch[7:0]} + x;
+                2: bus.addr = pc + tstate;
+            }
+        } else {
+            bus.addr = pc;
+        }
         bus.valid = 1;
     }
 
@@ -49,12 +63,32 @@ module cpu6502 (
         case op {
             8'hA9: {    // LDA imm
                 case t {
-                    4'd0: c = ctrl_t'{ load_ir: 1, load_a: 0, end_inst: 0 };
-                    4'd1: c = ctrl_t'{ load_ir: 0, load_a: 1, end_inst: 1 };
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_a: 1, end_inst: 1, len: 2, ..default(0) };
+                }
+            }
+            8'hBD: {    // LDA abs,x
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_lo: 1, ..default(0) };
+                    4'd2: c = ctrl_t'{ addr_sel: 1, ..default(0) };
+                    4'd3: c = ctrl_t'{ load_a: 1, end_inst: 1, len: 3, addr_sel: 2, ..default(0) };
+                }
+            }
+            8'hA2: {    // LDX imm
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_x: 1, end_inst: 1, len: 2, ..default(0) };
+                }
+            }
+            8'hA0: {    // LDY imm
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_y: 1, end_inst: 1, len: 2, ..default(0) };
                 }
             }
             default: {
-                c = ctrl_t'{ load_ir: 0, load_a: 0, end_inst: 0 };
+                c = ctrl_t'{ end_inst: 1, ..default(0) };
             }
         }
         return c;
@@ -63,11 +97,17 @@ module cpu6502 (
         ctrl = get_ctrl(if cpu_state == cpu_state_t::EXEC && tstate == 0 ? bus.rdata : opcode, tstate);
     }
 
+    function update_nz(value: input logic<8>) {
+        p[1] = value == 0;
+        p[7] = value[7];
+    }
+    
     always_ff {
         if_reset {
             a = 0; x = 0; y = 0; sp = 0; p = 0;
             pc = 0;
             tstate = 0;
+            addr_latch = 0;
         } else {
             if bus.ready {
                 if cpu_state == cpu_state_t::EXEC {
@@ -76,17 +116,26 @@ module cpu6502 (
                     }
                     if ctrl.load_a {
                         a = bus.rdata;
-                        p[1] = bus.rdata == 0;
-                        p[7] = bus.rdata[7];
+                        update_nz(bus.rdata);
+                    }
+                    if ctrl.load_x {
+                        x = bus.rdata;
+                        update_nz(bus.rdata);
+                    }
+                    if ctrl.load_y {
+                        y = bus.rdata;
+                        update_nz(bus.rdata);
+                    }
+                    if ctrl.load_lo {
+                        addr_latch[7:0] = bus.rdata;
                     }
                     if ctrl.end_inst {
                         tstate = 0;
                     } else {
                         tstate += 1;
                     }
-
                     if ctrl.end_inst {
-                        pc += tstate + 1;
+                        pc += ctrl.len;
                     }
                 }
             }
@@ -94,8 +143,8 @@ module cpu6502 (
     }
 
     always_ff {
-        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.end_inst %h",
-                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.end_inst
+        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.load_x %h, ctrl.load_y %h, ctrl.load_lo %h, ctrl.addr_sel %h, ctrl.end_inst %h",
+                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.load_x,    ctrl.load_y,    ctrl.load_lo,    ctrl.addr_sel,    ctrl.end_inst
         );
     }
 }
@@ -108,7 +157,7 @@ module test_cpu6502 {
     inst bus: bus_if::<8, 11>;
 
     inst mem: memory::<8, 11> #(
-        FILE_PATH: "../hex/test_rom.hex",
+        FILE_PATH: "../hex/test_lda.hex",
     ) (
         clk: clk,
         rst: rst,
