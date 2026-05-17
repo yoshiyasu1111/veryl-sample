@@ -1,0 +1,102 @@
+module memory::<DATA_WIDTH: u32, ADDR_WIDTH: u32> #(
+    param FILE_PATH: string = "",
+) (
+    clk: input clock,
+    rst: input reset,
+    bus: modport bus_if::<DATA_WIDTH, ADDR_WIDTH>::slave,
+) {
+    var mem: logic<DATA_WIDTH> [2 ** ADDR_WIDTH];
+
+    initial {
+        if FILE_PATH != "" {
+            $readmemh(FILE_PATH, mem);
+        }
+    }
+
+    always_ff {
+        if_reset {
+            bus.rdata = 0;
+            bus.ready = 0;
+        } else {
+            bus.ready = bus.valid;
+            if bus.valid {
+                if bus.wen {
+                    mem[bus.addr] = bus.wdata;
+                } else {
+                    bus.rdata = mem[bus.addr];
+                }
+            }    
+        }
+    }
+}
+
+#[test(test_memory)]
+module test_memory {
+    inst clk: $tb::clock_gen;
+    inst rst: $tb::reset_gen (clk);
+
+    inst bus: bus_if::<8, 11>;
+
+    inst dut: memory::<8, 11> (
+        clk: clk,
+        rst: rst,
+        bus: bus,
+    );
+
+    function write (addr: input logic<11>, data: input logic<8>) {
+        bus.wen   = 1;
+        bus.valid = 1;
+        bus.addr  = addr;
+        bus.wdata = data;
+        clk.next();
+        $assert(bus.ready); // 1サイクルで応答完了を期待している
+        bus.wen   = 0;
+        bus.valid = 0;
+    }
+
+    function read (addr: input logic<11>) {
+        bus.wen   = 0;
+        bus.valid = 1;
+        bus.addr  = addr;
+        clk.next();
+        $assert(bus.ready); // 1サイクルで応答完了を期待している
+    }
+
+    initial {
+        bus.addr  = 0;
+        bus.wen   = 0;
+        bus.valid = 0;
+        bus.wdata = 0;
+
+        rst.assert();
+        clk.next (10);
+        // -------------------------
+        // WRITE
+        // -------------------------
+        write(8'h10, 8'hDE);
+        write(8'h11, 8'hAD);
+        write(8'h12, 8'hBE);
+        write(8'h13, 8'hEF);
+
+        clk.next(3);
+        // -------------------------
+        // READ
+        // -------------------------
+        read(8'h10);
+        $assert(bus.rdata == 8'hDE);
+
+        read(8'h11);
+        $assert(bus.rdata == 8'hAD);
+
+        read(8'h12);
+        $assert(bus.rdata == 8'hBE);
+
+        read(8'h13);
+        $assert(bus.rdata == 8'hEF);
+
+        clk.next(3);
+
+        $display("memory test passed");
+        $finish ();
+    }
+}

@@ -1,0 +1,131 @@
+module cpu6502 (
+    clk : input clock,
+    rst : input reset,
+    bus : modport bus_if::<8, 16>::master,
+) {
+
+    // ============================================================
+    // Registers & Internal Latches
+    // ============================================================
+    var a  : logic<8>;
+    var x  : logic<8>;
+    var y  : logic<8>;
+    var sp : logic<8>;
+    var pc : logic<16>;
+    var p  : logic<8>;
+    var opcode : logic<8>;
+    var tstate : logic<4>;
+
+    enum cpu_state_t {
+        RESET,
+        EXEC,
+    }
+    var cpu_state: cpu_state_t;
+
+    always_ff {
+        if_reset {
+            cpu_state = cpu_state_t::RESET;
+        } else {            
+            cpu_state = cpu_state_t::EXEC;
+        }
+    }
+    struct ctrl_t {
+        load_ir  : logic,
+        load_a   : logic,
+        end_inst : logic,
+    }
+    var ctrl: ctrl_t;
+
+    always_comb {
+        bus.wen   = 0;
+        bus.wdata = 0;
+        bus.addr  = if cpu_state == cpu_state_t::EXEC ? pc + tstate + 1 : pc;
+        bus.valid = 1;
+    }
+
+    function get_ctrl(op: input logic<8>, t: input logic<4>) -> ctrl_t {
+        var c: ctrl_t;
+
+        case op {
+            8'hA9: {    // LDA imm
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, load_a: 0, end_inst: 0 };
+                    4'd1: c = ctrl_t'{ load_ir: 0, load_a: 1, end_inst: 1 };
+                }
+            }
+            default: {
+                c = ctrl_t'{ load_ir: 0, load_a: 0, end_inst: 0 };
+            }
+        }
+        return c;
+    }
+    always_comb {
+        ctrl = get_ctrl(if cpu_state == cpu_state_t::EXEC && tstate == 0 ? bus.rdata : opcode, tstate);
+    }
+
+    always_ff {
+        if_reset {
+            a = 0; x = 0; y = 0; sp = 0; p = 0;
+            pc = 0;
+            tstate = 0;
+        } else {
+            if bus.ready {
+                if cpu_state == cpu_state_t::EXEC {
+                    if ctrl.load_ir {
+                        opcode = bus.rdata;
+                    }
+                    if ctrl.load_a {
+                        a = bus.rdata;
+                        p[1] = bus.rdata == 0;
+                        p[7] = bus.rdata[7];
+                    }
+                    if ctrl.end_inst {
+                        tstate = 0;
+                    } else {
+                        tstate += 1;
+                    }
+
+                    if ctrl.end_inst {
+                        pc += tstate + 1;
+                    }
+                }
+            }
+        }
+    }
+
+    always_ff {
+        $display("pc %h, a %h, x %h, y %h, p %h, sp %h, opcode %h, cpu_state %h, bus.addr %h, bus.rdata %h, tstate %h, ctrl.load_ir %h, ctrl.load_a %h, ctrl.end_inst %h",
+                  pc,    a,    x ,   y,    p,    sp,    opcode,    cpu_state,    bus.addr,    bus.rdata,    tstate ,   ctrl.load_ir,    ctrl.load_a,    ctrl.end_inst
+        );
+    }
+}
+
+#[test(test_cpu6502)]
+module test_cpu6502 {
+    inst clk: $tb::clock_gen;
+    inst rst: $tb::reset_gen (clk);
+
+    inst bus: bus_if::<8, 11>;
+
+    inst mem: memory::<8, 11> #(
+        FILE_PATH: "../hex/test_rom.hex",
+    ) (
+        clk: clk,
+        rst: rst,
+        bus: bus,
+    );
+
+    inst dut: cpu6502 (
+        clk,
+        rst,
+        bus: bus,
+    );
+
+    initial {
+        rst.assert();
+        clk.next (10);
+
+        $display("cpu6502 test passed");
+        $finish ();
+    }
+}
