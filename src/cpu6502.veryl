@@ -62,6 +62,9 @@ module cpu6502 (
     var ctrl: ctrl_t;
 
     always_comb {
+        bus.valid = 1;
+        bus.wdata = 0;
+        bus.addr  = 0;
         if ctrl.write_mem {
             bus.wen = 1;
             case ctrl.write_mem_src {
@@ -82,7 +85,6 @@ module cpu6502 (
         } else {
             bus.addr = pc;
         }
-        bus.valid = 1;
     }
 
     function get_ctrl(op: input logic<8>, t: input logic<4>) -> ctrl_t {
@@ -162,6 +164,7 @@ module cpu6502 (
             pc = 0;
             tstate = 0;
             addr_latch = 0;
+            opcode = 0;
         } else {
             if bus.ready {
                 if cpu_state == cpu_state_t::EXEC {
