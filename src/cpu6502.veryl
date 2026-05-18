@@ -40,9 +40,10 @@ module cpu6502 (
     enum write_mem_src_t {
         A,
     }
-    enum x_src_t {
+    enum reg_src_t {
         BUS,
         INC,
+        DEC,
     }
     struct ctrl_t {
         load_ir         : logic,
@@ -52,7 +53,7 @@ module cpu6502 (
         load_sp         : logic,
         load_lo         : logic,
         addr_src        : addr_src_t,
-        x_src           : x_src_t,
+        reg_src         : reg_src_t,
         write_mem       : logic,
         write_mem_src   : write_mem_src_t,
         set_int         : logic,
@@ -108,7 +109,7 @@ module cpu6502 (
             8'hA2: {    // LDX imm
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
-                    4'd1: c = ctrl_t'{ load_x: 1, x_src: x_src_t::BUS, end_inst: 1, len: 2, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_x: 1, reg_src: reg_src_t::BUS, end_inst: 1, len: 2, ..default(0) };
                 }
             }
             8'hA0: {    // LDY imm
@@ -140,7 +141,13 @@ module cpu6502 (
             8'hE8: {    // INX
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
-                    4'd1: c = ctrl_t'{ load_x: 1, x_src: x_src_t::INC, addr_src: addr_src_t::IMPLIED, end_inst: 1, len: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_x: 1, reg_src: reg_src_t::INC, addr_src: addr_src_t::IMPLIED, end_inst: 1, len: 1, ..default(0) };
+                }
+            }
+            8'h88: {    // DEY
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_y: 1, reg_src: reg_src_t::DEC, addr_src: addr_src_t::IMPLIED, end_inst: 1, len: 1, ..default(0) };
                 }
             }
             default: {
@@ -176,20 +183,28 @@ module cpu6502 (
                         update_nz(bus.rdata);
                     }
                     if ctrl.load_x {
-                        case ctrl.x_src {
-                            x_src_t::BUS: {
+                        case ctrl.reg_src {
+                            reg_src_t::BUS: {
                                 x = bus.rdata;
                                 update_nz(bus.rdata);
                             }
-                            x_src_t::INC: {
+                            reg_src_t::INC: {
                                 x = x + 1;
                                 update_nz(x + 1);
                             }
                         }
                     }
                     if ctrl.load_y {
-                        y = bus.rdata;
-                        update_nz(bus.rdata);
+                        case ctrl.reg_src {
+                            reg_src_t::BUS: {
+                                y = bus.rdata;
+                                update_nz(bus.rdata);
+                            }
+                            reg_src_t::DEC: {
+                                y = y - 1;
+                                update_nz(y - 1);
+                            }
+                        }
                     }
                     if ctrl.load_sp {
                         sp = x;
@@ -228,7 +243,7 @@ module test_cpu6502 {
     inst bus: bus_if::<8, 11>;
 
     inst mem: memory::<8, 11> #(
-        FILE_PATH: "../hex/test_inx.hex",
+        FILE_PATH: "../hex/test_dey.hex",
     ) (
         clk: clk,
         rst: rst,
