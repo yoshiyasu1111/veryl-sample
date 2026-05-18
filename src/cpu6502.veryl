@@ -36,6 +36,7 @@ module cpu6502 (
         ABSOLUTE,
         ABSOLUTEX,
         Relative,
+        JUMP,
         ADJUST,
     }
     enum write_mem_src_t {
@@ -58,6 +59,7 @@ module cpu6502 (
         write_mem       : logic,
         write_mem_src   : write_mem_src_t,
         branch          : logic,
+        jump            : logic,
         set_int         : logic,
         end_inst        : logic,
         len             : logic<3>,
@@ -85,6 +87,7 @@ module cpu6502 (
                 addr_src_t::ABSOLUTEX : bus.addr = {bus.rdata, addr_latch[7:0]} + x;
                 addr_src_t::ADJUST    : bus.addr = pc + tstate;
                 addr_src_t::Relative  : bus.addr = if p[1] == 0 ? pc + 2 + bus.rdata : pc + tstate + 1;
+                addr_src_t::JUMP      : bus.addr = if ctrl.jump ? {bus.rdata, addr_latch[7:0]} : pc + tstate + 1;
             }
         } else {
             bus.addr = pc;
@@ -157,6 +160,13 @@ module cpu6502 (
                 case t {
                     4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
                     4'd1: c = ctrl_t'{ branch: 1, addr_src: addr_src_t::Relative, end_inst: 1, len: 2, ..default(0) };
+                }
+            }
+            8'h4C: {    // JMP, abs
+                case t {
+                    4'd0: c = ctrl_t'{ load_ir: 1, ..default(0) };
+                    4'd1: c = ctrl_t'{ load_lo: 1, ..default(0) };
+                    4'd2: c = ctrl_t'{ jump: 1, addr_src: addr_src_t::JUMP, end_inst: 1, len: 3, ..default(0) };
                 }
             }
             default: {
@@ -232,6 +242,8 @@ module cpu6502 (
                     if ctrl.end_inst {
                         if ctrl.branch && (p[1] == 0) {
                             pc = pc + 2 + bus.rdata;
+                        } else if ctrl.jump {
+                            pc = { bus.rdata, addr_latch };
                         } else {
                             pc += ctrl.len;
                         }
@@ -256,7 +268,7 @@ module test_cpu6502 {
     inst bus: bus_if::<8, 11>;
 
     inst mem: memory::<8, 11> #(
-        FILE_PATH: "../hex/test_bne.hex",
+        FILE_PATH: "../hex/test_jmp.hex",
     ) (
         clk: clk,
         rst: rst,
